@@ -1,7 +1,10 @@
 services:
-  - type: worker
+  - type: web
     name: idm-bot
     env: python
     plan: free
+    pythonVersion: 3.11.9
     buildCommand: pip install -r requirements.txt
     startCommand: python idm_bot.py
+    autoDeploy: true
+    healthCheckPath: /
