@@ -104,7 +104,7 @@ def find_swings(candles, lookback=3):
     return highs, lows
 
 def get_trend_4h(candles_4h):
-    closes = [c[4] for c in candles_4h]
+    closes = [float(c[4]) for c in candles_4h]  # ← ДОБАВЬ float()
     e50 = ema(closes, 50)
     e200 = ema(closes, 200)
     if e50 is None or e200 is None:
@@ -118,7 +118,7 @@ def get_trend_4h(candles_4h):
 
 def get_trend_1h(candles_1h):
     """Тренд на 1H (средний ТФ для подтверждения)"""
-    closes = [c[4] for c in candles_1h]
+    closes = [float(c[4]) for c in candles_1h]  # ← ДОБАВЬ float()
     e20 = ema(closes, 20)
     e50 = ema(closes, 50)
     if e20 is None or e50 is None:
