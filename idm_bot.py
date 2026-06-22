@@ -248,6 +248,7 @@ def in_kill_zone():
 
 def fetch_candles(symbol, tf, limit=250):
     """Получить свечи OKX в хронологическом порядке (старые → новые)"""
+    import time as _t
     url = (
         f"https://www.okx.com/api/v5/market/history-candles"
         f"?instId={symbol}&bar={tf}&limit={limit}"
@@ -264,7 +265,6 @@ def fetch_candles(symbol, tf, limit=250):
                 return candles[::-1]
             elif data.get("code") in ["50011", "50012", "50013", "50014"]:
                 log.warning(f"{symbol} rate limit, sleep {5*(attempt+1)}s")
-                import time as _t
                 _t.sleep(5 * (attempt + 1))
                 continue
             else:
@@ -272,9 +272,8 @@ def fetch_candles(symbol, tf, limit=250):
                 return []
         except Exception as e:
             log.error(f"{symbol} {tf} FAIL: {type(e).__name__}: {e}")
-            import time as _t
             _t.sleep(2)
-        return []
+    return []
 
 def analyze_symbol(symbol):
     # Загружаем 3 таймфрейма
@@ -424,7 +423,6 @@ def signal_keyboard(sid):
 
 signals_log = {}
 active_trades = {}  # {sid: {symbol, direction, entry, sl, tp}}
-TRADES_FILE = "active_trades.json"
 
 def sig_id(sig):
     return f"{sig['symbol'].replace('/','')}_{sig['time'].replace(':','').replace(' ','')}"
