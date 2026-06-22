@@ -378,8 +378,9 @@ def analyze_symbol(symbol):
     risk = abs(entry - sl)
     if risk <= 0:
         return None
-    
-    tp = entry + (risk * 3) if direction == "long" else entry - (risk * 3)
+
+    min_rr = 3.0
+    tp = entry + (risk * min_rr) if direction == "long" else entry - (risk * min_rr)
     
     # Сила сигнала
     strength = 50
