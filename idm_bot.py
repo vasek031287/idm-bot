@@ -332,7 +332,7 @@ def analyze_symbol(symbol):
     
     # Забор ликвидности - сохраняем
     sweep = detect_sweep(c15, trend)
-    if sweep != direction:
+    if sweep != trend:
         return None
     
     # Order Block - сохраняем
