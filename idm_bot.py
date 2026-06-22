@@ -77,21 +77,24 @@ def ema(values, period):
     return e
 
 def atr(candles, period=14):
-    if len(candles) < period + 1:
+    if len(candles) < 2:
         return None
     trs = []
     for i in range(1, len(candles)):
-        h = float(candles[i][2])
-        l = float(candles[i][3])
-        pc = float(candles[i-1][4])
-        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+        try:
+            h = float(candles[i][2])
+            l = float(candles[i][3])
+            pc = float(candles[i-1][4])
+            trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+        except (ValueError, IndexError, TypeError):
+            continue
     if len(trs) < period:
         return None
     a = sum(trs[:period]) / period
     for tr in trs[period:]:
         a = (a * (period - 1) + tr) / period
     return a
-
+    
 def find_swings(candles, lookback=3):
     highs, lows = [], []
     for i in range(lookback, len(candles) - lookback):
@@ -190,21 +193,21 @@ def find_order_block(candles, direction):
     if len(candles) < 30:
         return None
 
-    # Шаг 1: найти последний BOS (пробой предыдущего свинга)
+    # Шаг 1: найти последний BOS (оптимизировано)
     bos_idx = None
-    for i in range(len(candles) - 1, 15, -1):
-        # Ищем ближайший предыдущий swing
-        swing_high = max(float(c[2]) for c in candles[max(0, i-10):i])
-        swing_low = min(float(c[3]) for c in candles[max(0, i-10):i])
-
-        # Long BOS: пробой swing high
-        if direction == "long" and float(candles[i][4]) > swing_high:
-            bos_idx = i
-            break
-        # Short BOS: пробой swing low
-        if direction == "short" and float(candles[i][4]) < swing_low:
-            bos_idx = i
-            break
+    start_idx = max(15, len(candles) - 30)
+    for i in range(len(candles) - 1, start_idx, -1):
+        try:
+            prev_max = max(float(c[2]) for c in candles[i-5:i])
+            prev_min = min(float(c[3]) for c in candles[i-5:i])
+            if direction == "long" and float(candles[i][4]) > prev_max:
+                bos_idx = i
+                break
+            if direction == "short" and float(candles[i][4]) < prev_min:
+                bos_idx = i
+                break
+        except (ValueError, IndexError, TypeError):
+            continue
 
     if bos_idx is None:
         return None
@@ -247,13 +250,20 @@ def is_mitigated(candles, ob, direction):
     return False
 
 def has_fvg(candles, direction):
-    if len(candles) < 3:
+    if len(candles) < 10:
         return False
-    c0, c1, c2 = candles[-3], candles[-2], candles[-1]
-    if direction == "long" and float(c2[1]) > float(c0[2]) > float(c1[3]):
-        return True
-    if direction == "short" and float(c2[1]) < float(c0[3]) < float(c1[2]):
-        return True
+    # Проверяем последние 10 свечей на FVG
+    for i in range(-10, -1):
+        try:
+            c0 = candles[i-1]
+            c1 = candles[i]
+            c2 = candles[i+1]
+            if direction == "long" and float(c2[1]) > float(c0[2]) > float(c1[3]):
+                return True
+            if direction == "short" and float(c2[1]) < float(c0[3]) < float(c1[2]):
+                return True
+        except (IndexError, ValueError):
+            continue
     return False
 
 def volume_ok(candles):
@@ -261,11 +271,13 @@ def volume_ok(candles):
         return False
     vols = [float(c[5]) for c in candles[-21:-1]]
     avg = sum(vols) / len(vols)
-    return float(candles[-1][5]) > avg * 1.2
+    if avg == 0:
+        return False
+    return float(candles[-1][5]) > avg * 1.0
 
 def in_kill_zone():
     h = datetime.now(timezone.utc).hour
-    return 8 <= h < 12 or 13 <= h < 17
+    return 8 <= h < 12 or 13 <= h < 17 or 19 <= h < 23
 
 def fetch_candles(symbol, tf, limit=250):
     """Получить свечи OKX в хронологическом порядке (старые → новые)"""
