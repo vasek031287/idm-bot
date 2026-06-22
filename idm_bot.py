@@ -280,7 +280,7 @@ def analyze_symbol(symbol):
     # Загружаем 3 таймфрейма
     c4 = fetch_candles(symbol, "4H", 250)
     c1 = fetch_candles(symbol, "1H", 200)
-    c15 = fetch_candles(symbol, "15m", 200) # Младший ТФ
+    c15 = fetch_candles(symbol, "15m", 200)
     
     if not c4 or not c1 or not c15:
         return None
@@ -305,22 +305,25 @@ def analyze_symbol(symbol):
     if struct != trend:
         return None
     
-    # CHoCH на 15m
-    if detect_choch(c15, trend) != direction:
+    # CHoCH на 15m - сохраняем результат
+    choch = detect_choch(c15, trend)
+    if choch != direction:
         return None
     
-    # Забор ликвидности
+    # Забор ликвидности - сохраняем
     sweep = detect_sweep(c15, trend)
     if sweep != direction:
         return None
     
-    # Order Block
+    # Order Block - сохраняем
     ob = find_order_block(c15, direction)
     if not ob:
         return None
     
     # FVG + объём
-    if not has_fvg(c15, direction) or not volume_ok(c15):
+    has_fvg_val = has_fvg(c15, direction)
+    vol_ok = volume_ok(c15)
+    if not has_fvg_val or not vol_ok:
         return None
     
     # ATR
@@ -328,49 +331,53 @@ def analyze_symbol(symbol):
     if not a:
         return None
     
-    entry = c15[-1][4]
+    # Определяем entry и OB-уровни
     if direction == "long":
-        sl = ob["low"] - a * 0.5
-        risk = entry - sl
-        tp = entry + risk * 3
+        ob_top = ob["high"]   # верх OB (вход)
+        ob_bot = ob["low"]    # низ OB
+        entry = ob_top
+        sl = ob_bot - a * 0.5
     else:
-        sl = ob["high"] + a * 0.5
-        risk = sl - entry
-        tp = entry - risk * 3
+        ob_top = ob["high"]
+        ob_bot = ob["low"]
+        entry = ob_bot
+        sl = ob_top + a * 0.5
     
+    risk = abs(entry - sl)
     if risk <= 0:
         return None
     
+    tp = entry + (risk * 3) if direction == "long" else entry - (risk * 3)
+    
     # Сила сигнала
-    strength = 50  # базовая
+    strength = 50
     if trend_4h == trend_1h:
-        strength += 10  # оба ТФ совпадают
-    if detect_choch(c15, trend) == direction:
         strength += 10
-    if detect_sweep(c15, trend) == direction:
+    if choch == direction:
+        strength += 10
+    if sweep == direction:
         strength += 5
     if ob:
         strength += 10
-    if has_fvg(c15, direction):
+    if has_fvg_val:
         strength += 5
-    if volume_ok(c15):
+    if vol_ok:
         strength += 5
     if in_kill_zone():
         strength += 5
     strength = min(strength, 100)
     
-    # МИНИМАЛЬНАЯ СИЛА — отсекаем слабые сигналы
     if strength < 70:
         return None
     
     return {
         "symbol": symbol,
         "direction": direction,
-        "entry": entry,
-        "sl": sl,
-        "tp": tp,
+        "entry": round(entry, 6),
+        "sl": round(sl, 6),
+        "tp": round(tp, 6),
         "rr": 3.0,
-        "atr": a,
+        "atr": round(a, 6),
         "strength": strength,
         "kill_zone": in_kill_zone(),
         "trend_4h": trend_4h,
