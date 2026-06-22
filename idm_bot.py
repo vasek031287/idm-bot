@@ -42,7 +42,7 @@ TF_SEC = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
 
 SYMBOLS = [
     "BTC-USDT", "ETH-USDT", "BNB-USDT", "SOL-USDT", "XRP-USDT",
-    "ADA-USDT", "DOGE-USDT", "TON-USDT", "TRX-USDT", "AVAX-USDT",
+    "ADA-USDT", "DOGE-USDT", "PEPE-USDT", "TRX-USDT", "AVAX-USDT",
     "LINK-USDT", "DOT-USDT", "SHIB-USDT", "LTC-USDT", "BCH-USDT",
 ]
 
@@ -81,7 +81,9 @@ def atr(candles, period=14):
         return None
     trs = []
     for i in range(1, len(candles)):
-        h, l, pc = candles[i][2], candles[i][3], candles[i-1][4]
+        h = float(candles[i][2])
+        l = float(candles[i][3])
+        pc = float(candles[i-1][4])
         trs.append(max(h - l, abs(h - pc), abs(l - pc)))
     if len(trs) < period:
         return None
@@ -93,11 +95,11 @@ def atr(candles, period=14):
 def find_swings(candles, lookback=3):
     highs, lows = [], []
     for i in range(lookback, len(candles) - lookback):
-        if all(candles[i][2] > candles[i-j][2] for j in range(1, lookback+1)) and \
-           all(candles[i][2] > candles[i+j][2] for j in range(1, lookback+1)):
+        if all(float(candles[i][2]) > float(candles[i-j][2]) for j in range(1, lookback+1)) and \
+           all(float(candles[i][2]) > float(candles[i+j][2]) for j in range(1, lookback+1)):
             highs.append(i)
-        if all(candles[i][3] < candles[i-j][3] for j in range(1, lookback+1)) and \
-           all(candles[i][3] < candles[i+j][3] for j in range(1, lookback+1)):
+        if all(float(candles[i][3]) < float(candles[i-j][3]) for j in range(1, lookback+1)) and \
+           all(float(candles[i][3]) < float(candles[i+j][3]) for j in range(1, lookback+1)):
             lows.append(i)
     return highs, lows
 
@@ -132,8 +134,10 @@ def market_structure(candles):
     highs, lows = find_swings(candles, lookback=3)
     if len(highs) < 2 or len(lows) < 2:
         return "neutral"
-    h1, h2 = candles[highs[-2]][2], candles[highs[-1]][2]
-    l1, l2 = candles[lows[-2]][3], candles[lows[-1]][3]
+    h1 = float(candles[highs[-2]][2])
+    h2 = float(candles[highs[-1]][2])
+    l1 = float(candles[lows[-2]][3])
+    l2 = float(candles[lows[-1]][3])
     if h2 > h1 and l2 > l1:
         return "bullish"
     if h2 < h1 and l2 < l1:
@@ -145,11 +149,11 @@ def detect_choch(candles, trend):
         return None
     _, lows = find_swings(candles, lookback=2)
     highs, _ = find_swings(candles, lookback=2)
-    closes = [c[4] for c in candles]
+    closes = [float(c[4]) for c in candles]
     last = closes[-1]
-    if trend == "bullish" and lows and last > candles[lows[-1]][3]:
+    if trend == "bullish" and lows and last > float(candles[lows[-1]][3]):
         return "long"
-    if trend == "bearish" and highs and last < candles[highs[-1]][2]:
+    if trend == "bearish" and highs and last < float(candles[highs[-1]][2]):
         return "short"
     return None
 
@@ -162,19 +166,19 @@ def detect_sweep(candles, trend):
     if not highs or not lows:
         return None
     last = candles[-1]
-    last_high = last[2]
-    last_low = last[3]
-    last_close = last[4]
+    last_high = float(last[2])
+    last_low = float(last[3])
+    last_close = float(last[4])
 
     # Bullish sweep: пробили минимум, закрылись выше
     if lows:
-        swing_low = candles[lows[-1]][3]
+        swing_low = float(candles[lows[-1]][3])
         if last_low < swing_low and last_close > swing_low:
             return "bullish"
 
     # Bearish sweep: пробили максимум, закрылись ниже
     if highs:
-        swing_high = candles[highs[-1]][2]
+        swing_high = float(candles[highs[-1]][2])
         if last_high > swing_high and last_close < swing_high:
             return "bearish"
 
@@ -190,15 +194,15 @@ def find_order_block(candles, direction):
     bos_idx = None
     for i in range(len(candles) - 1, 15, -1):
         # Ищем ближайший предыдущий swing
-        swing_high = max(c[2] for c in candles[max(0, i-10):i])
-        swing_low = min(c[3] for c in candles[max(0, i-10):i])
+        swing_high = max(float(c[2]) for c in candles[max(0, i-10):i])
+        swing_low = min(float(c[3]) for c in candles[max(0, i-10):i])
 
         # Long BOS: пробой swing high
-        if direction == "long" and candles[i][4] > swing_high:
+        if direction == "long" and float(candles[i][4]) > swing_high:
             bos_idx = i
             break
         # Short BOS: пробой swing low
-        if direction == "short" and candles[i][4] < swing_low:
+        if direction == "short" and float(candles[i][4]) < swing_low:
             bos_idx = i
             break
 
@@ -208,38 +212,37 @@ def find_order_block(candles, direction):
     # Шаг 2: ищем последнюю противоположную свечу перед BOS
     for i in range(bos_idx - 1, max(0, bos_idx - 20), -1):
         c = candles[i]
-        rng = c[2] - c[3]
+        rng = float(c[2]) - float(c[3])
         if rng == 0:
             continue
-        body = abs(c[4] - c[1])
+        body = abs(float(c[4]) - float(c[1]))
 
         # Тело должно быть узким или средним (не огромная бычья/медвежья)
         if body / rng > 0.6:
             continue
 
         # Long OB: медвежья свеча перед BOS вверх
-        if direction == "long" and c[4] < c[1]:
-            ob = {"low": c[3], "high": c[2], "idx": i}
+        if direction == "long" and float(c[4]) < float(c[1]):
+            ob = {"low": float(c[3]), "high": float(c[2]), "idx": i}
             # Проверка: не был ли OB уже отработан
             if not is_mitigated(candles, ob, "long"):
                 return ob
 
         # Short OB: бычья свеча перед BOS вниз
-        if direction == "short" and c[4] > c[1]:
-            ob = {"low": c[3], "high": c[2], "idx": i}
+        if direction == "short" and float(c[4]) > float(c[1]):
+            ob = {"low": float(c[3]), "high": float(c[2]), "idx": i}
             if not is_mitigated(candles, ob, "short"):
                 return ob
 
     return None
 
-
 def is_mitigated(candles, ob, direction):
     """Проверяет был ли OB уже отработан (цена заходила внутрь после BOS)"""
     ob_idx = ob["idx"]
     for i in range(ob_idx + 1, len(candles)):
-        if direction == "long" and candles[i][3] <= ob["high"]:
+        if direction == "long" and float(candles[i][3]) <= ob["high"]:
             return True  # цена зашла в OB снизу
-        if direction == "short" and candles[i][2] >= ob["low"]:
+        if direction == "short" and float(candles[i][2]) >= ob["low"]:
             return True  # цена зашла в OB сверху
     return False
 
@@ -247,18 +250,18 @@ def has_fvg(candles, direction):
     if len(candles) < 3:
         return False
     c0, c1, c2 = candles[-3], candles[-2], candles[-1]
-    if direction == "long" and c2[1] > c0[2] > c1[3]:
+    if direction == "long" and float(c2[1]) > float(c0[2]) > float(c1[3]):
         return True
-    if direction == "short" and c2[1] < c0[3] < c1[2]:
+    if direction == "short" and float(c2[1]) < float(c0[3]) < float(c1[2]):
         return True
     return False
 
 def volume_ok(candles):
     if len(candles) < 21:
         return False
-    vols = [c[5] for c in candles[-21:-1]]
+    vols = [float(c[5]) for c in candles[-21:-1]]
     avg = sum(vols) / len(vols)
-    return candles[-1][5] > avg * 1.2
+    return float(candles[-1][5]) > avg * 1.2
 
 def in_kill_zone():
     h = datetime.now(timezone.utc).hour
