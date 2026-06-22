@@ -292,7 +292,7 @@ def fetch_candles(symbol, tf, limit=250):
                 log.warning(f"{symbol} API: {data.get('code')} {data.get('msg')}")
                 return []
         except Exception as e:
-            log.error(f"{symbol} {tf} FAIL: {type(e).__name__}: {e}")
+            log.error(f"{symbol} {tf} FAIL: {type(e).__name__}: {e}", exc_info=True)
             _t.sleep(2)
     return []
 
