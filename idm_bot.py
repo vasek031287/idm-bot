@@ -278,8 +278,8 @@ def fetch_candles(symbol, tf, limit=250):
 
 def analyze_symbol(symbol):
     # Загружаем 3 таймфрейма
-    c4 = fetch_candles(symbol, "4h", 250)   # Старший ТФ
-    c1 = fetch_candles(symbol, "1h", 200)   # Средний ТФ
+    c4 = fetch_candles(symbol, "4H", 250)
+    c1 = fetch_candles(symbol, "1H", 200)
     c15 = fetch_candles(symbol, "15m", 200) # Младший ТФ
     
     if not c4 or not c1 or not c15:
