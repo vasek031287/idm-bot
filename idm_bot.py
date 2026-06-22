@@ -706,6 +706,22 @@ async def post_init(app):
     # Запуск сканера синхронизированного с :00/:15/:30/:45
     asyncio.get_event_loop().create_task(scan_loop_aligned(app))
     log.info("Сканер запущен, синхронизирован с :00/:15/:30/:45")
+        # Keep Alive (чтобы Render не усыплял)
+    asyncio.get_event_loop().create_task(keep_alive())
+    log.info("Keep Alive запущен (пинг каждые 10 мин)")
+
+async def keep_alive():
+    """Пингует сам себя каждые 10 минут, чтобы Render не усыплял"""
+    import aiohttp
+    while True:
+        try:
+            await asyncio.sleep(600)  # 10 минут
+            url = os.environ.get("RENDER_EXTERNAL_URL", "https://idm-bot.onrender.com")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=10) as resp:
+                    log.debug(f"keep_alive ping: {resp.status}")
+        except Exception as e:
+            log.debug(f"keep_alive: {e}")
 
 def main():
     start_health_server()
