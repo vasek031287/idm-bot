@@ -3,6 +3,8 @@ import subprocess
 import json
 import asyncio
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 from datetime import datetime, timezone
 
@@ -13,6 +15,22 @@ from config import TELEGRAM_TOKEN, CHAT_ID
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 log = logging.getLogger("idm")
+# === HEALTH SERVER (для Render) ===
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+    def log_message(self, *args):
+        pass  # не спамить лог
+
+def start_health_server():
+    """Запускает HTTP-сервер на порту 8080 для Render Health Check"""
+    server = HTTPServer(("0.0.0.0", 8080), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    log.info("✅ Health server запущен на :8080")
+# === END HEALTH SERVER ===
 
 TIMEFRAME_TREND = "4h"
 TIMEFRAME_ENTRY = "15m"
@@ -687,6 +705,8 @@ async def post_init(app):
     log.info("Сканер запущен, синхронизирован с :00/:15/:30/:45")
 
 def main():
+    start_health_server()
+    
     app = (
         Application.builder()
         .token(TELEGRAM_TOKEN)
