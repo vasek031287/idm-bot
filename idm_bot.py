@@ -19,12 +19,13 @@ TIMEFRAME_ENTRY = "15m"
 SCAN_INTERVAL_MIN = 15
 TOP_N_COINS = 25
 STATS_FILE = "stats.json"
+TRADES_FILE = "active_trades.json"
 TF_SEC = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
 
 SYMBOLS = [
     "BTC-USDT", "ETH-USDT", "BNB-USDT", "SOL-USDT", "XRP-USDT",
     "ADA-USDT", "DOGE-USDT", "TON-USDT", "TRX-USDT", "AVAX-USDT",
-    "LINK-USDT", "XAU-USDT.P", "SHIB-USDT", "LTC-USDT", "BCH-USDT",
+    "LINK-USDT", "DOT-USDT", "SHIB-USDT", "LTC-USDT", "BCH-USDT",
 ]
 
 def load_stats():
@@ -92,6 +93,20 @@ def get_trend_4h(candles_4h):
     if last > e200 and e50 > e200:
         return "bullish"
     if last < e200 and e50 < e200:
+        return "bearish"
+    return "neutral"
+
+def get_trend_1h(candles_1h):
+    """Тренд на 1H (средний ТФ для подтверждения)"""
+    closes = [c[4] for c in candles_1h]
+    e20 = ema(closes, 20)
+    e50 = ema(closes, 50)
+    if e20 is None or e50 is None:
+        return "neutral"
+    last = closes[-1]
+    if last > e50 and e20 > e50:
+        return "bullish"
+    if last < e50 and e20 < e50:
         return "bearish"
     return "neutral"
 
@@ -262,27 +277,57 @@ def fetch_candles(symbol, tf, limit=250):
         return []
 
 def analyze_symbol(symbol):
-    c4 = fetch_candles(symbol, TIMEFRAME_TREND, 250)
-    c15 = fetch_candles(symbol, TIMEFRAME_ENTRY, 200)
-    if not c4 or not c15:
+    # Загружаем 3 таймфрейма
+    c4 = fetch_candles(symbol, "4h", 250)   # Старший ТФ
+    c1 = fetch_candles(symbol, "1h", 200)   # Средний ТФ
+    c15 = fetch_candles(symbol, "15m", 200) # Младший ТФ
+    
+    if not c4 or not c1 or not c15:
         return None
-    trend = get_trend_4h(c4)
-    struct = market_structure(c4[-100:])
-    if trend == "neutral" or struct != trend:
+    
+    # Тренды на старших ТФ
+    trend_4h = get_trend_4h(c4)
+    trend_1h = get_trend_1h(c1)
+    
+    # ФИЛЬТР 1: тренд 4H должен быть определённым
+    if trend_4h == "neutral":
         return None
+    
+    # ФИЛЬТР 2: 1H должен подтверждать 4H
+    if trend_1h != trend_4h:
+        return None
+    
+    trend = trend_4h
     direction = "long" if trend == "bullish" else "short"
+    
+    # Структура рынка на 4H
+    struct = market_structure(c4[-100:])
+    if struct != trend:
+        return None
+    
+    # CHoCH на 15m
     if detect_choch(c15, trend) != direction:
         return None
-    # Новый фильтр: требуем забор ликвидности перед входом
+    
+    # Забор ликвидности
     sweep = detect_sweep(c15, trend)
     if sweep != direction:
         return None
+    
+    # Order Block
     ob = find_order_block(c15, direction)
-    if not ob or not has_fvg(c15, direction) or not volume_ok(c15):
+    if not ob:
         return None
+    
+    # FVG + объём
+    if not has_fvg(c15, direction) or not volume_ok(c15):
+        return None
+    
+    # ATR
     a = atr(c15, 14)
     if not a:
         return None
+    
     entry = c15[-1][4]
     if direction == "long":
         sl = ob["low"] - a * 0.5
@@ -292,23 +337,44 @@ def analyze_symbol(symbol):
         sl = ob["high"] + a * 0.5
         risk = sl - entry
         tp = entry - risk * 3
+    
     if risk <= 0:
         return None
-    # Сила зависит от кол-ва подтверждений и условий
-    strength = 60  # базовая за тренд+CHoCH+sweep+OB+FVG+volume
+    
+    # Сила сигнала
+    strength = 50  # базовая
+    if trend_4h == trend_1h:
+        strength += 10  # оба ТФ совпадают
+    if detect_choch(c15, trend) == direction:
+        strength += 10
+    if detect_sweep(c15, trend) == direction:
+        strength += 5
+    if ob:
+        strength += 10
     if has_fvg(c15, direction):
-        strength += 10
+        strength += 5
     if volume_ok(c15):
-        strength += 10
+        strength += 5
     if in_kill_zone():
-        strength += 10
-    if atr(c15, 14) and atr(c15, 14) > 0:
-        strength += 10
+        strength += 5
     strength = min(strength, 100)
+    
+    # МИНИМАЛЬНАЯ СИЛА — отсекаем слабые сигналы
+    if strength < 70:
+        return None
+    
     return {
-        "symbol": symbol, "direction": direction, "entry": entry,
-        "sl": sl, "tp": tp, "rr": 3.0, "atr": a, "strength": strength,
+        "symbol": symbol,
+        "direction": direction,
+        "entry": entry,
+        "sl": sl,
+        "tp": tp,
+        "rr": 3.0,
+        "atr": a,
+        "strength": strength,
         "kill_zone": in_kill_zone(),
+        "trend_4h": trend_4h,
+        "trend_1h": trend_1h,
         "time": datetime.now(timezone.utc).strftime("%H:%M UTC"),
     }
 
@@ -316,6 +382,13 @@ def format_signal(sig):
     emoji = "🟢" if sig["direction"] == "long" else "🔴"
     d = "LONG" if sig["direction"] == "long" else "SHORT"
     kz = "✅ Kill Zone" if sig["kill_zone"] else "⚪️ вне Kill Zone"
+    
+    # Тренды для отображения
+    t4 = sig.get("trend_4h", "neutral")
+    t1 = sig.get("trend_1h", "neutral")
+    t4_e = "🟢" if t4 == "bullish" else "🔴" if t4 == "bearish" else "⚪️"
+    t1_e = "🟢" if t1 == "bullish" else "🔴" if t1 == "bearish" else "⚪️"
+    
     return (
         f"{emoji} *{sig['symbol']} — {d}*\n\n"
         f"💪 Сила: *{sig['strength']}%*\n"
@@ -323,9 +396,13 @@ def format_signal(sig):
         f"🛑 Стоп: `{sig['sl']:.5f}`\n"
         f"🏁 Тейк: `{sig['tp']:.5f}`\n"
         f"📊 R/R: 1:{sig['rr']:.1f}\n"
-        f"📈 ATR: `{sig['atr']:.5f}`\n"
+        f"📈 ATR: `{sig['atr']:.5f}`\n\n"
+        f"📊 *Мультитаймфрейм:*\n"
+        f"   4H: {t4_e} {t4}\n"
+        f"   1H: {t1_e} {t1}\n"
+        f"   15m: {emoji} {d}\n\n"
         f"🕐 {sig['time']}  {kz}\n"
-        f"📐 4H тренд + CHoCH + OB + FVG + объём"
+        f"📐 4H+1H+CHoCH+Sweep+OB+FVG+Vol"
     )
 
 def signal_keyboard(sid):
